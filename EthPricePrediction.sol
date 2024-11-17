@@ -3,42 +3,42 @@ pragma solidity ^0.8.16;
 
 /**
  * @title EthPricePrediction
- * @notice Contrato de predicción del precio ETH/USD con un pool diario de apuestas.
+ * @notice ETH/USD price prediction contract with a daily betting pool.
  */
 contract EthPricePrediction {
-    /// @notice El oráculo Chronicle ETH/USD.
+    /// @notice The Chronicle ETH/USD oracle.
     IChronicle public immutable chronicle;
 
-    /// @notice El gestor de acceso a los oráculos Chronicle.
+    /// @notice The Chronicle oracle access manager.
     ISelfKisser public immutable selfKisser;
 
-    /// @notice Dirección del propietario del contrato.
+    /// @notice Address of the contract owner.
     address public owner;
 
-    /// @notice Mapeo para almacenar predicciones por participante.
+    /// @notice Mapping to store predictions per participant.
     mapping(address => uint256) public predictions;
 
-    /// @notice Monto total apostado en el pool.
+    /// @notice Total amount wagered in the pool.
     uint256 public totalPool;
 
-    /// @notice Dirección del ganador del día.
+    /// @notice Address of the day's winner.
     address public dailyWinner;
 
-    /// @notice Registro de predicciones diarias.
+    /// @notice Record of daily predictions.
     address[] public participants;
 
-    /// @notice Marca de tiempo del inicio del día actual.
+    /// @notice Timestamp of the current day's start.
     uint256 public dayStart;
 
-    /// @notice Evento para registrar nuevas predicciones.
+    /// @notice Event to log new predictions.
     event NewPrediction(address indexed participant, uint256 prediction);
 
-    /// @notice Evento para anunciar al ganador.
+    /// @notice Event to announce the winner.
     event WinnerAnnounced(address indexed winner, uint256 reward);
 
-    /// @notice Modificador para restringir acceso al propietario.
+    /// @notice Modifier to restrict access to the owner.
     modifier onlyOwner() {
-        require(msg.sender == owner, "Solo el owner puede llamar esta funcion");
+        require(msg.sender == owner, "Only the owner can call this function");
         _;
     }
 
@@ -47,53 +47,54 @@ contract EthPricePrediction {
         selfKisser = ISelfKisser(selfKisser_);
         selfKisser.selfKiss(address(chronicle));
 
-        // Establecer el propietario como el desplegador del contrato.
+        // Set the deployer as the contract owner.
         owner = msg.sender;
 
-        // Iniciar el día actual.
+        // Start the current day.
         dayStart = block.timestamp;
     }
 
-    /// @notice Permite a los participantes hacer una predicción.
-    /// @param prediction El precio ETH/USD predicho por el participante.
+    /// @notice Allows participants to make a prediction.
+    /// @param prediction The ETH/USD price predicted by the participant.
     function makePrediction(uint256 prediction) external payable {
-        require(msg.value > 0, "Debe enviar ETH para participar");
+        require(msg.value > 0, "Must send ETH to participate");
         require(
             block.timestamp < dayStart + 1 days,
-            "El tiempo para hacer predicciones ha terminado"
+            "The time for predictions has ended"
         );
 
-        // Registrar la predicción.
+        // Record the prediction.
         predictions[msg.sender] = prediction;
         participants.push(msg.sender);
 
-        // Actualizar el pozo.
+        // Update the pool.
         totalPool += msg.value;
 
         emit NewPrediction(msg.sender, prediction);
     }
 
-    /// @notice Finaliza el día, calcula el ganador y distribuye el premio.
+    /// @notice Ends the day, calculates the winner, and distributes the reward.
     function finalizeDay() external {
         require(
-            block.timestamp >= dayStart + 1 days
+            block.timestamp >= dayStart + 1 days,
+            "The current day is not yet finished"
         );
         _calculateWinner();
     }
 
-    /// @notice Permite al propietario seleccionar al ganador de inmediato.
+    /// @notice Allows the owner to select the winner immediately.
     function selectWinnerImmediately() external onlyOwner {
         _calculateWinner();
     }
 
-    /// @notice Calcula el ganador y distribuye el premio.
+    /// @notice Calculates the winner and distributes the reward.
     function _calculateWinner() private {
-        require(participants.length > 0, "No hay participantes");
+        require(participants.length > 0, "No participants");
 
-        // Obtener el precio actual del oráculo.
+        // Get the current price from the oracle.
         uint256 oraclePrice = chronicle.read();
 
-        // Determinar al ganador.
+        // Determine the winner.
         uint256 closestDifference = type(uint256).max;
         address winner;
 
@@ -108,20 +109,20 @@ contract EthPricePrediction {
             }
         }
 
-        // Actualizar variables del estado.
+        // Update state variables.
         dailyWinner = winner;
-        uint256 reward = (totalPool * 90) / 100; // El ganador recibe el 90% del pozo.
+        uint256 reward = (totalPool * 90) / 100; // Winner receives 90% of the pool.
 
-        // Transferir el premio al ganador.
+        // Transfer the reward to the winner.
         payable(winner).transfer(reward);
 
         emit WinnerAnnounced(winner, reward);
 
-        // Reiniciar para el siguiente día.
+        // Reset for the next day.
         _resetDay();
     }
 
-    /// @notice Calcula la diferencia absoluta entre dos números.
+    /// @notice Calculates the absolute difference between two numbers.
     function _absoluteDifference(uint256 a, uint256 b)
         private
         pure
@@ -130,7 +131,7 @@ contract EthPricePrediction {
         return a > b ? a - b : b - a;
     }
 
-    /// @notice Reinicia las variables para un nuevo día.
+    /// @notice Resets variables for a new day.
     function _resetDay() private {
         for (uint256 i = 0; i < participants.length; i++) {
             delete predictions[participants[i]];
@@ -141,18 +142,20 @@ contract EthPricePrediction {
         dayStart = block.timestamp;
     }
 
-    /// @notice Permite al propietario transferir la propiedad del contrato.
-    /// @param newOwner Dirección del nuevo propietario.
+    /// @notice Allows the owner to transfer contract ownership.
+    /// @param newOwner Address of the new owner.
     function transferOwnership(address newOwner) external onlyOwner {
-        require(newOwner != address(0), "Nuevo propietario invalido");
+        require(newOwner != address(0), "New owner is invalid");
         owner = newOwner;
     }
-        function read() external view returns (uint256 val) {
+
+    /// @notice Reads the current ETH/USD price from the oracle.
+    function read() external view returns (uint256 val) {
         return chronicle.read();
     }
 }
 
-// Interfaces existentes.
+// Existing interfaces.
 interface IChronicle {
     function read() external view returns (uint256 value);
 }
